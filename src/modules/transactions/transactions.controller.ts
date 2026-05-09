@@ -9,7 +9,7 @@ import { UserRole } from '../../database/entities/user.entity';
 @Controller('transactions')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class TransactionsController {
-  constructor(private readonly transactionsService: TransactionsService) {}
+  constructor(private readonly transactionsService: TransactionsService) { }
 
   @Get()
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
@@ -26,7 +26,7 @@ export class TransactionsController {
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
-    return this.transactionsService.findAll({ 
+    return this.transactionsService.findAll({
       member_id,
       created_by,
       fiscal_year,

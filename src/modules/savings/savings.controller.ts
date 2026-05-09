@@ -9,20 +9,30 @@ import { UserRole } from '../../database/entities/user.entity';
 @Controller('savings')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class SavingsController {
-  constructor(private readonly savingsService: SavingsService) {}
+  constructor(private readonly savingsService: SavingsService) { }
 
   @Post(':memberId/deposit')
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
   async deposit(
     @Param('memberId') memberId: string,
-    @Body() body: { amount: number, bs_date: string },
+    @Body() body: { amount: number, bs_date: string, deposit_type?: string, remarks?: string },
     @CurrentUser() admin: any
   ) {
-    return this.savingsService.deposit(memberId, body.amount, body.bs_date, admin.id);
+    return this.savingsService.deposit(memberId, body.amount, body.bs_date, admin.id, body.deposit_type, body.remarks);
+  }
+
+  @Post(':memberId/withdraw')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+  async withdraw(
+    @Param('memberId') memberId: string,
+    @Body() body: { amount: number, bs_date: string, withdraw_type?: string, remarks?: string },
+    @CurrentUser() admin: any
+  ) {
+    return this.savingsService.withdraw(memberId, body.amount, body.bs_date, admin.id, body.withdraw_type, body.remarks);
   }
 
   @Get('deposits')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MEMBER)
   async getAllDeposits(
     @Query('member_id') member_id?: string,
     @Query('created_by') created_by?: string,

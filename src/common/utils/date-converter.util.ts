@@ -8,7 +8,6 @@ export class DateConverter {
    */
   static bsToAd(bsDate: string): Date {
     bsDate = bsDate.replaceAll("/", "-");
-    console.log("bsDate", bsDate);
     const [year, month, day] = bsDate.split('-').map(Number);
     // nepali-date-converter uses 0-indexed month (0 = Baisakh, 11 = Chaitra)
     const nd = new NepaliDate(year, month - 1, day);

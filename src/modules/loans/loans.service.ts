@@ -235,11 +235,13 @@ export class LoansService {
     }
 
     if (filters.date_from) {
-      query.andWhere('loan.disbursed_ad_date >= :dateFrom', { dateFrom: filters.date_from });
+      const adFrom = DateConverter.bsToAd(filters.date_from);
+      query.andWhere('loan.disbursed_ad_date >= :dateFrom', { dateFrom: adFrom });
     }
 
     if (filters.date_to) {
-      query.andWhere('loan.disbursed_ad_date <= :dateTo', { dateTo: filters.date_to });
+      const adTo = DateConverter.bsToAd(filters.date_to);
+      query.andWhere('loan.disbursed_ad_date <= :dateTo', { dateTo: adTo });
     }
 
     const [data, total] = await query

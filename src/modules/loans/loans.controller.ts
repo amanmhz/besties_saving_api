@@ -9,7 +9,7 @@ import { UserRole } from '../../database/entities/user.entity';
 @Controller('loans')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class LoansController {
-  constructor(private readonly loansService: LoansService) {}
+  constructor(private readonly loansService: LoansService) { }
 
   @Post(':memberId/disburse')
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
@@ -43,7 +43,7 @@ export class LoansController {
   }
 
   @Get()
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MEMBER)
   async getAllLoans(
     @Query('member_id') member_id?: string,
     @Query('created_by') created_by?: string,

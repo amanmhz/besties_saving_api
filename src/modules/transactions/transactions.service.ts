@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Transaction } from '../../database/entities/transaction.entity';
+import { DateConverter } from '../../common/utils/date-converter.util';
 
 @Injectable()
 export class TransactionsService {
@@ -18,7 +19,7 @@ export class TransactionsService {
     const query = this.transactionsRepo.createQueryBuilder('transaction')
       .leftJoinAndSelect('transaction.user', 'user')
       .leftJoinAndSelect('transaction.creator', 'creator')
-      .orderBy('transaction.created_at', 'DESC');
+      .orderBy('transaction.sn', 'DESC');
 
     if (filters.member_id) {
       query.andWhere('transaction.member_id = :memberId', { memberId: filters.member_id });
@@ -49,11 +50,13 @@ export class TransactionsService {
     }
 
     if (filters.date_from) {
-      query.andWhere('transaction.ad_date >= :dateFrom', { dateFrom: filters.date_from });
+      const adFrom = DateConverter.bsToAd(filters.date_from);
+      query.andWhere('transaction.ad_date >= :dateFrom', { dateFrom: adFrom });
     }
 
     if (filters.date_to) {
-      query.andWhere('transaction.ad_date <= :dateTo', { dateTo: filters.date_to });
+      const adTo = DateConverter.bsToAd(filters.date_to);
+      query.andWhere('transaction.ad_date <= :dateTo', { dateTo: adTo });
     }
 
     const [data, total] = await query
@@ -72,7 +75,7 @@ export class TransactionsService {
   async getMyTransactions(memberId: string) {
     return this.transactionsRepo.find({
       where: { member_id: memberId },
-      order: { created_at: 'DESC' }
+      order: { sn: 'DESC' }
     });
   }
 }

@@ -9,7 +9,7 @@ import { UserRole } from '../../database/entities/user.entity';
 @Controller('users')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(private readonly usersService: UsersService) { }
 
   @Post()
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
@@ -22,7 +22,7 @@ export class UsersController {
   }
 
   @Get()
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MEMBER)
   findAll(
     @Query('page') page?: string,
     @Query('limit') limit?: string,

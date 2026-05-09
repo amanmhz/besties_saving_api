@@ -3,6 +3,8 @@ import { User } from './user.entity';
 
 export enum TransactionType {
   SAVING_DEPOSIT = 'SAVING_DEPOSIT',
+  SAVING_WITHDRAW = 'SAVING_WITHDRAW',
+  SAVING_INTEREST = 'SAVING_INTEREST',
   LOAN_REPAYMENT = 'LOAN_REPAYMENT',
   LOAN_INTEREST_PAYMENT = 'LOAN_INTEREST_PAYMENT',
   LOAN_DISBURSEMENT = 'LOAN_DISBURSEMENT',
@@ -13,14 +15,17 @@ export class Transaction {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column('uuid')
+  @Column({ type: 'int', generated: 'increment', unique: true })
+  sn: number;
+
+  @Column('uuid', { nullable: true })
   member_id: string;
 
   @ManyToOne(() => User, (user) => user.transactions)
   @JoinColumn({ name: 'member_id' })
   user: User;
 
-  @Column('uuid')
+  @Column('uuid', { nullable: true })
   account_id: string; // References SavingAccount or LoanAccount
 
   @Column({ type: 'enum', enum: TransactionType })

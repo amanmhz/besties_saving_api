@@ -35,7 +35,7 @@ export class SavingsService {
     return this.savingsRepo.save(account);
   }
 
-  async deposit(memberId: string, amount: number, bsDate: string, createdBy: string) {
+  async deposit(memberId: string, amount: number, bsDate: string, createdBy: string, depositType: string = 'CASH', remarks: string = 'SYSTEM') {
     if (amount <= 0) throw new BadRequestException('Deposit amount must be positive');
 
     const queryRunner = this.dataSource.createQueryRunner();
@@ -61,10 +61,15 @@ export class SavingsService {
       // 2. Create detailed deposit record (Member's history)
       const deposit = queryRunner.manager.create(SavingDeposit, {
         saving_account_id: account.id,
-        amount,
+        amount_in: amount,
+        amount_out: 0,
+        deposit_type: depositType,
+        remarks: remarks,
         balance_after: account.total_balance,
         bs_date: bsDate,
         ad_date: adDate,
+        fiscal_year: fiscalYear,
+        fiscal_quarter: fiscalQuarter,
         created_by: createdBy
       });
       const savedDeposit = await queryRunner.manager.save(deposit);
@@ -88,6 +93,7 @@ export class SavingsService {
         fiscal_year: fiscalYear,
         fiscal_quarter: fiscalQuarter,
         created_by: createdBy,
+        description: remarks,
         is_manual: false
       });
       await queryRunner.manager.save(transaction);
@@ -97,12 +103,93 @@ export class SavingsService {
         user_id: createdBy,
         action: ActionType.CREATE,
         module: 'SAVINGS',
-        payload: { depositId: savedDeposit.id, amount, accountId: account.id }
+        payload: { depositId: savedDeposit.id, amount, accountId: account.id, type: 'DEPOSIT' }
       });
       await queryRunner.manager.save(log);
 
       await queryRunner.commitTransaction();
       return { account, deposit: savedDeposit };
+    } catch (err) {
+      await queryRunner.rollbackTransaction();
+      throw err;
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  async withdraw(memberId: string, amount: number, bsDate: string, createdBy: string, withdrawType: string = 'CASH', remarks: string = 'WithDraw') {
+    if (amount <= 0) throw new BadRequestException('Withdraw amount must be positive');
+
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      let account = await queryRunner.manager.findOne(SavingAccount, { where: { member_id: memberId } });
+      if (!account) throw new NotFoundException('Saving account not found for this member');
+      
+      const oldBalance = Number(account.total_balance);
+      if (oldBalance < amount) throw new BadRequestException('Insufficient balance');
+
+      const adDate = DateConverter.bsToAd(bsDate);
+      const fiscalYear = FiscalCalculator.getFiscalYear(bsDate);
+      const fiscalQuarter = FiscalCalculator.getFiscalQuarter(bsDate);
+
+      // 1. Update member master balance
+      account.total_balance = oldBalance - Number(amount);
+      await queryRunner.manager.save(account);
+
+      // 2. Create detailed deposit record (using amount_out)
+      const withdraw = queryRunner.manager.create(SavingDeposit, {
+        saving_account_id: account.id,
+        amount_in: 0,
+        amount_out: amount,
+        withdraw_type: withdrawType,
+        remarks: remarks,
+        balance_after: account.total_balance,
+        bs_date: bsDate,
+        ad_date: adDate,
+        fiscal_year: fiscalYear,
+        fiscal_quarter: fiscalQuarter,
+        created_by: createdBy
+      });
+      const savedWithdraw = await queryRunner.manager.save(withdraw);
+
+      // 3. Organization Balance Tracking
+      const currentOrgBalance = await this.getOrgCurrentBalance(queryRunner.manager);
+      const newOrgBalance = currentOrgBalance - Number(amount);
+
+      // 4. Create linked transaction for ledger
+      const transaction = queryRunner.manager.create(Transaction, {
+        member_id: memberId,
+        account_id: account.id,
+        saving_account_id: account.id,
+        saving_deposit_id: savedWithdraw.id,
+        type: TransactionType.SAVING_WITHDRAW,
+        amount_in: 0,
+        amount_out: amount,
+        balance_amount: newOrgBalance,
+        ad_date: adDate,
+        bs_date: bsDate,
+        fiscal_year: fiscalYear,
+        fiscal_quarter: fiscalQuarter,
+        created_by: createdBy,
+        description: remarks,
+        is_manual: false
+      });
+      await queryRunner.manager.save(transaction);
+
+      // 5. Audit Log
+      const log = queryRunner.manager.create(ActivityLog, {
+        user_id: createdBy,
+        action: ActionType.CREATE,
+        module: 'SAVINGS',
+        payload: { withdrawId: savedWithdraw.id, amount, accountId: account.id, type: 'WITHDRAW' }
+      });
+      await queryRunner.manager.save(log);
+
+      await queryRunner.commitTransaction();
+      return { account, withdraw: savedWithdraw };
     } catch (err) {
       await queryRunner.rollbackTransaction();
       throw err;
@@ -131,11 +218,13 @@ export class SavingsService {
     }
 
     if (filters.date_from) {
-      query.andWhere('deposit.ad_date >= :dateFrom', { dateFrom: filters.date_from });
+      const adFrom = DateConverter.bsToAd(filters.date_from);
+      query.andWhere('deposit.ad_date >= :dateFrom', { dateFrom: adFrom });
     }
 
     if (filters.date_to) {
-      query.andWhere('deposit.ad_date <= :dateTo', { dateTo: filters.date_to });
+      const adTo = DateConverter.bsToAd(filters.date_to);
+      query.andWhere('deposit.ad_date <= :dateTo', { dateTo: adTo });
     }
 
     const [data, total] = await query

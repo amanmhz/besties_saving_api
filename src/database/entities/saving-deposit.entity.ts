@@ -7,6 +7,9 @@ export class SavingDeposit {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
+  @Column({ type: 'int', generated: 'increment', unique: true })
+  sn: number;
+
   @Column('uuid')
   saving_account_id: string;
 
@@ -14,8 +17,26 @@ export class SavingDeposit {
   @JoinColumn({ name: 'saving_account_id' })
   savingAccount: SavingAccount;
 
-  @Column('decimal', { precision: 12, scale: 2 })
-  amount: number;
+  @Column('decimal', { precision: 12, scale: 2, default: 0 })
+  amount_in: number;
+
+  @Column('decimal', { precision: 12, scale: 2, default: 0 })
+  amount_out: number;
+
+  @Column({ type: 'varchar', length: 50, nullable: true })
+  deposit_type: string; // CASH, ONLINE, FROM_INTEREST
+
+  @Column({ type: 'varchar', length: 50, nullable: true })
+  withdraw_type: string; // CASH, ONLINE
+
+  @Column({ type: 'text', nullable: true })
+  remarks: string;
+
+  @Column({ length: 10, nullable: true })
+  fiscal_year: string;
+
+  @Column({ length: 2, nullable: true })
+  fiscal_quarter: string;
 
   @Column('decimal', { precision: 12, scale: 2 })
   balance_after: number;
