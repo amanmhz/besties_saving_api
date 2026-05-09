@@ -23,24 +23,24 @@ export class AuthController {
     // Access token cookie - short lived (15 minutes)
     response.cookie('access_token', tokenData.access_token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      secure: true,
+      sameSite: 'none',
       maxAge: 15 * 60 * 1000 // 15 minutes
     });
 
     // Refresh token cookie - long lived (7 days)
     response.cookie('refresh_token', tokenData.refresh_token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      secure: true,
+      sameSite: 'none',
       maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
     });
 
     // Last activity cookie - for inactivity tracking (30 min)
     response.cookie('last_activity', Date.now().toString(), {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      secure: true,
+      sameSite: 'none',
       maxAge: this.INACTIVITY_TIMEOUT
     });
 
@@ -77,24 +77,24 @@ export class AuthController {
     // Set new access token
     response.cookie('access_token', tokens.access_token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      secure: true,
+      sameSite: 'none',
       maxAge: 15 * 60 * 1000
     });
 
     // Set new refresh token (rotate for security)
     response.cookie('refresh_token', tokens.refresh_token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      secure: true,
+      sameSite: 'none',
       maxAge: 7 * 24 * 60 * 60 * 1000
     });
 
     // Reset activity timer
     response.cookie('last_activity', Date.now().toString(), {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      secure: true,
+      sameSite: 'none',
       maxAge: this.INACTIVITY_TIMEOUT
     });
 
