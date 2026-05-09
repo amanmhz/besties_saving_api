@@ -204,14 +204,48 @@ export class LoansService {
     return this.loansRepo.find({ where: { member_id: memberId }, order: { created_at: 'DESC' } });
   }
 
-  async getAllLoans(page: number = 1, limit: number = 10) {
+  async getAllLoans(filters: { member_id?: string; created_by?: string; status?: string; fiscal_year?: string; fiscal_quarter?: string; date_from?: string; date_to?: string; page?: number; limit?: number; }) {
+    const page = filters.page || 1;
+    const limit = filters.limit || 10;
     const skip = (page - 1) * limit;
-    const [data, total] = await this.loansRepo.findAndCount({ 
-      relations: ['user', 'creator'],
-      order: { created_at: 'DESC' },
-      take: limit,
-      skip: skip
-    });
+
+    const query = this.loansRepo.createQueryBuilder('loan')
+      .leftJoinAndSelect('loan.user', 'user')
+      .leftJoinAndSelect('loan.creator', 'creator')
+      .orderBy('loan.created_at', 'DESC');
+
+    if (filters.member_id) {
+      query.andWhere('loan.member_id = :memberId', { memberId: filters.member_id });
+    }
+
+    if (filters.created_by) {
+      query.andWhere('loan.created_by = :createdBy', { createdBy: filters.created_by });
+    }
+
+    if (filters.status) {
+      query.andWhere('loan.status = :status', { status: filters.status });
+    }
+
+    if (filters.fiscal_year) {
+      query.andWhere('loan.fiscal_year = :fiscalYear', { fiscalYear: filters.fiscal_year });
+    }
+
+    if (filters.fiscal_quarter) {
+      query.andWhere('loan.fiscal_quarter = :fiscalQuarter', { fiscalQuarter: filters.fiscal_quarter });
+    }
+
+    if (filters.date_from) {
+      query.andWhere('loan.disbursed_ad_date >= :dateFrom', { dateFrom: filters.date_from });
+    }
+
+    if (filters.date_to) {
+      query.andWhere('loan.disbursed_ad_date <= :dateTo', { dateTo: filters.date_to });
+    }
+
+    const [data, total] = await query
+      .take(limit)
+      .skip(skip)
+      .getManyAndCount();
 
     return {
       data,

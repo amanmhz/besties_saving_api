@@ -111,14 +111,37 @@ export class SavingsService {
     }
   }
 
-  async getAllDeposits(page: number = 1, limit: number = 10) {
+  async getAllDeposits(filters: { member_id?: string; created_by?: string; date_from?: string; date_to?: string; page?: number; limit?: number; }) {
+    const page = filters.page || 1;
+    const limit = filters.limit || 10;
     const skip = (page - 1) * limit;
-    const [data, total] = await this.depositRepo.findAndCount({
-      relations: ['savingAccount', 'savingAccount.user', 'creator'],
-      order: { created_at: 'DESC' },
-      take: limit,
-      skip: skip
-    });
+
+    const query = this.depositRepo.createQueryBuilder('deposit')
+      .leftJoinAndSelect('deposit.savingAccount', 'savingAccount')
+      .leftJoinAndSelect('savingAccount.user', 'user')
+      .leftJoinAndSelect('deposit.creator', 'creator')
+      .orderBy('deposit.created_at', 'DESC');
+
+    if (filters.member_id) {
+      query.andWhere('savingAccount.member_id = :memberId', { memberId: filters.member_id });
+    }
+
+    if (filters.created_by) {
+      query.andWhere('deposit.created_by = :createdBy', { createdBy: filters.created_by });
+    }
+
+    if (filters.date_from) {
+      query.andWhere('deposit.ad_date >= :dateFrom', { dateFrom: filters.date_from });
+    }
+
+    if (filters.date_to) {
+      query.andWhere('deposit.ad_date <= :dateTo', { dateTo: filters.date_to });
+    }
+
+    const [data, total] = await query
+      .take(limit)
+      .skip(skip)
+      .getManyAndCount();
 
     return {
       data,

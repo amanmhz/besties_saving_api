@@ -45,12 +45,26 @@ export class LoansController {
   @Get()
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
   async getAllLoans(
+    @Query('member_id') member_id?: string,
+    @Query('created_by') created_by?: string,
+    @Query('status') status?: string,
+    @Query('fiscal_year') fiscal_year?: string,
+    @Query('fiscal_quarter') fiscal_quarter?: string,
+    @Query('date_from') date_from?: string,
+    @Query('date_to') date_to?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
-    return this.loansService.getAllLoans(
-      page ? parseInt(page) : 1,
-      limit ? parseInt(limit) : 10
-    );
+    return this.loansService.getAllLoans({
+      member_id,
+      created_by,
+      status,
+      fiscal_year,
+      fiscal_quarter,
+      date_from,
+      date_to,
+      page: page ? parseInt(page) : 1,
+      limit: limit ? parseInt(limit) : 10
+    });
   }
 }

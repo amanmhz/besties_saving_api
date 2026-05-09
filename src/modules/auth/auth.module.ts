@@ -2,9 +2,11 @@ import { Module } from '@nestjs/common';
 import { JwtModule, JwtModuleOptions } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { APP_INTERCEPTOR } from '@nestjs/core';
 import { JwtStrategy } from './jwt.strategy';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
+import { ActivityInterceptor } from './activity.interceptor';
 import { UsersModule } from '../users/users.module';
 
 @Module({
@@ -23,7 +25,14 @@ import { UsersModule } from '../users/users.module';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy],
+  providers: [
+    AuthService,
+    JwtStrategy,
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: ActivityInterceptor,
+    },
+  ],
   exports: [PassportModule, JwtModule, AuthService],
 })
 export class AuthModule { }
