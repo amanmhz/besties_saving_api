@@ -9,16 +9,16 @@ async function bootstrap() {
   const usersService = app.get(UsersService);
 
   const existingAdmin = await usersService.findByEmail('admin@besties.com');
-  
+
   if (!existingAdmin) {
     console.log('🌱 Seeding default SuperAdmin...');
     await usersService.create({
-      name: 'Super Admin',
+      name: 'Besties Savings',
       email: 'admin@besties.com',
       password_hash: 'admin123', // Will be hashed by service
       role: UserRole.SUPER_ADMIN,
       is_active: true,
-      phone: '9800000000'
+      phone: ''
     });
     console.log('✅ Default SuperAdmin created: admin@besties.com / admin123');
   }
@@ -26,7 +26,7 @@ async function bootstrap() {
   // Seed default settings
   const settingsService = app.get(SettingsService);
   const existingSavingsRate = await settingsService.findAll().then((res: any[]) => res.find(s => s.setting_key === 'SAVING_INTEREST_RATE'));
-  
+
   if (!existingSavingsRate && existingAdmin) {
     console.log('🌱 Seeding default interest rates...');
     const adminId = existingAdmin?.id || (await usersService.findByEmail('admin@besties.com'))?.id;

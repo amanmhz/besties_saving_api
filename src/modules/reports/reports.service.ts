@@ -5,6 +5,7 @@ import { SavingAccount } from '../../database/entities/saving-account.entity';
 import { LoanAccount, LoanStatus } from '../../database/entities/loan-account.entity';
 import { User } from '../../database/entities/user.entity';
 import { Transaction, TransactionType } from '../../database/entities/transaction.entity';
+import { SavingInterest } from '../../database/entities/saving-interest.entity';
 
 @Injectable()
 export class ReportsService {
@@ -17,10 +18,12 @@ export class ReportsService {
     private readonly userRepo: Repository<User>,
     @InjectRepository(Transaction)
     private readonly transactionRepo: Repository<Transaction>,
+    @InjectRepository(SavingInterest)
+    private readonly interestRepo: Repository<SavingInterest>,
   ) {}
 
   async getDashboardStats() {
-    const [totalSavings, activeLoans, totalMembers, cashFlow, loanInterest] = await Promise.all([
+    const [totalSavings, activeLoans, totalMembers, cashFlow, loanInterest, bankInterest, bankInterestPool] = await Promise.all([
       this.savingRepo
         .createQueryBuilder('sa')
         .select('SUM(sa.total_balance)', 'sum')
@@ -40,6 +43,17 @@ export class ReportsService {
         .createQueryBuilder('tx')
         .select('SUM(tx.amount_in)', 'sum')
         .where('tx.type = :type', { type: TransactionType.LOAN_INTEREST_PAYMENT })
+        .getRawOne(),
+      this.transactionRepo
+        .createQueryBuilder('tx')
+        .select('SUM(tx.amount_in)', 'sum')
+        .where('tx.type = :type', { type: TransactionType.SAVING_INTEREST })
+        .getRawOne(),
+      this.interestRepo
+        .createQueryBuilder('si')
+        .select('si.balance_amount', 'balance')
+        .orderBy('si.sn', 'DESC')
+        .limit(1)
         .getRawOne(),
     ]);
 
@@ -65,7 +79,8 @@ export class ReportsService {
       availableBalance,
       totalInterest: {
         loan: parseFloat(loanInterest?.sum || '0'),
-        bank: 0, 
+        bank: parseFloat(bankInterest?.sum || '0'), 
+        currentPoolBalance: parseFloat(bankInterestPool?.balance || '0'),
       },
       chartData: balanceData.map(d => ({
         date: d.date,
