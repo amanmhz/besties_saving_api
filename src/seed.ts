@@ -1,4 +1,7 @@
 import { NestFactory } from '@nestjs/core';
+import * as dotenv from 'dotenv';
+dotenv.config();
+
 import { AppModule } from './app.module';
 import { UsersService } from './modules/users/users.service';
 import { UserRole } from './database/entities/user.entity';
@@ -8,19 +11,22 @@ async function bootstrap() {
   const app = await NestFactory.createApplicationContext(AppModule);
   const usersService = app.get(UsersService);
 
-  const existingAdmin = await usersService.findByEmail('admin@besties.com');
+  const adminEmail = process.env.ADMIN_EMAIL || '';
+  const adminPassword = process.env.ADMIN_PASSWORD || '';
+
+  const existingAdmin = await usersService.findByEmail(adminEmail);
 
   if (!existingAdmin) {
     console.log('🌱 Seeding default SuperAdmin...');
     await usersService.create({
       name: 'Besties Savings',
-      email: 'admin@besties.com',
-      password_hash: 'admin123', // Will be hashed by service
+      email: adminEmail,
+      password_hash: adminPassword, // Will be hashed by service
       role: UserRole.SUPER_ADMIN,
       is_active: true,
       phone: ''
     });
-    console.log('✅ Default SuperAdmin created: admin@besties.com / admin123');
+    console.log(`✅ Default SuperAdmin created: ${adminEmail}`);
   }
 
   // Seed default settings
@@ -29,7 +35,7 @@ async function bootstrap() {
 
   if (!existingSavingsRate && existingAdmin) {
     console.log('🌱 Seeding default interest rates...');
-    const adminId = existingAdmin?.id || (await usersService.findByEmail('admin@besties.com'))?.id;
+    const adminId = existingAdmin?.id || (await usersService.findByEmail(adminEmail))?.id;
     if (adminId) {
       await settingsService.upsertSetting('SAVING_INTEREST_RATE', '8', adminId);
       await settingsService.upsertSetting('LOAN_INTEREST_RATE', '12', adminId);
