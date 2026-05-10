@@ -3,12 +3,15 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { User, UserRole } from '../../database/entities/user.entity';
+import { Transaction, TransactionType } from '../../database/entities/transaction.entity';
 
 @Injectable()
 export class UsersService {
   constructor(
     @InjectRepository(User)
     private usersRepo: Repository<User>,
+    @InjectRepository(Transaction)
+    private transactionRepo: Repository<Transaction>,
   ) {}
 
   async create(data: Partial<User>) {
@@ -66,8 +69,19 @@ export class UsersService {
     });
 
     if (!user) throw new NotFoundException('User not found');
+
+    const totalInterestCollected = await this.transactionRepo
+      .createQueryBuilder('tx')
+      .select('SUM(tx.amount_out)', 'sum')
+      .where('tx.member_id = :id', { id })
+      .andWhere('tx.type = :type', { type: TransactionType.SAVING_INTEREST })
+      .getRawOne();
+
     const { password_hash, ...result } = user;
-    return result;
+    return {
+      ...result,
+      totalInterestCollected: parseFloat(totalInterestCollected?.sum || '0'),
+    };
   }
 
   async update(id: string, data: any, requester: { id: string; role: UserRole }) {
