@@ -7,6 +7,9 @@ export class LoanPayment {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
+  @Column({ type: 'int', generated: 'increment', unique: true })
+  sn: number;
+
   @Column('uuid')
   loan_account_id: string;
 
@@ -28,6 +31,9 @@ export class LoanPayment {
 
   @Column({ type: 'date' })
   payment_date: Date;
+
+  @Column({ default: false })
+  is_reversed: boolean;
 
   @Column('uuid')
   created_by: string;

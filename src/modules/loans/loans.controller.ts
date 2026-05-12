@@ -31,6 +31,15 @@ export class LoansController {
     return this.loansService.repayLoan(loanId, body, admin.id);
   }
 
+  @Post(':loanId/payments/:paymentId/reverse')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+  async reversePayment(
+    @Param('paymentId') paymentId: string,
+    @CurrentUser() admin: any
+  ) {
+    return this.loansService.reversePayment(paymentId, admin.id);
+  }
+
   @Get('my-loans')
   async getMyLoans(@CurrentUser() user: any) {
     return this.loansService.getLoansByMember(user.id);

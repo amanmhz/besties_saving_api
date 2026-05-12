@@ -24,6 +24,12 @@ export class SavingInterest {
   @Column({ type: 'text', nullable: true })
   remarks: string;
 
+  @Column({ default: false })
+  is_reversed: boolean;
+
+  @Column({ type: 'uuid', nullable: true })
+  saving_deposit_id: string;
+
   @Column({ type: 'date' })
   ad_date: Date;
 

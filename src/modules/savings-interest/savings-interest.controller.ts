@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, UseGuards, Query } from '@nestjs/common';
+import { Controller, Get, Post, Body, UseGuards, Query, Param } from '@nestjs/common';
 import { SavingsInterestService } from './savings-interest.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -43,6 +43,15 @@ export class SavingsInterestController {
       bsDate: body.bs_date,
       createdBy: admin.id
     });
+  }
+
+  @Post(':id/reverse')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+  async reverseInterest(
+    @Param('id') id: string,
+    @CurrentUser() admin: any
+  ) {
+    return this.service.reverseInterest(id, admin.id);
   }
 
   @Get()

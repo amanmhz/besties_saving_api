@@ -200,6 +200,107 @@ export class LoansService {
     }
   }
 
+  async reversePayment(paymentId: string, createdBy: string) {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      const payment = await queryRunner.manager.findOne(LoanPayment, { 
+        where: { id: paymentId }, 
+        relations: ['loanAccount'] 
+      });
+      
+      if (!payment) throw new NotFoundException('Payment not found');
+      if (payment.is_reversed) throw new BadRequestException('Payment is already reversed');
+
+      const loan = payment.loanAccount;
+      
+      // 1. Update Loan Account
+      loan.remaining_amount = Number(loan.remaining_amount) + Number(payment.amount_paid);
+      if (loan.remaining_amount > 0 && loan.status === LoanStatus.CLOSED) {
+        loan.status = LoanStatus.ACTIVE;
+      }
+      loan.updated_by = createdBy;
+      await queryRunner.manager.save(loan);
+
+      // 2. Mark payment as reversed
+      payment.is_reversed = true;
+      await queryRunner.manager.save(payment);
+
+      // 3. Organization Balance Tracking
+      let currentOrgBalance = await this.getOrgCurrentBalance(queryRunner.manager);
+
+      const adDate = new Date();
+      const bs_date = DateConverter.adToBs(adDate);
+      const fiscalYear = FiscalCalculator.getFiscalYear(bs_date);
+      const fiscalQuarter = FiscalCalculator.getFiscalQuarter(bs_date);
+
+      // Row 1: Reverse Principal
+      if (Number(payment.amount_paid) > 0) {
+        currentOrgBalance -= Number(payment.amount_paid);
+        const principalTx = queryRunner.manager.create(Transaction, {
+          member_id: loan.member_id,
+          account_id: loan.id,
+          loan_account_id: loan.id,
+          loan_payment_id: payment.id,
+          type: TransactionType.LOAN_REPAYMENT_REVERSAL,
+          amount_in: 0,
+          amount_out: payment.amount_paid,
+          balance_amount: currentOrgBalance,
+          ad_date: adDate,
+          bs_date: bs_date,
+          fiscal_year: fiscalYear,
+          fiscal_quarter: fiscalQuarter,
+          created_by: createdBy,
+          is_manual: false,
+          description: `Reversal of principal repayment for payment ID: ${payment.id}`
+        });
+        await queryRunner.manager.save(principalTx);
+      }
+
+      // Row 2: Reverse Interest
+      if (Number(payment.interest_paid) > 0) {
+        currentOrgBalance -= Number(payment.interest_paid);
+        const interestTx = queryRunner.manager.create(Transaction, {
+          member_id: loan.member_id,
+          account_id: loan.id,
+          loan_account_id: loan.id,
+          loan_payment_id: payment.id,
+          type: TransactionType.LOAN_INTEREST_REVERSAL,
+          amount_in: 0,
+          amount_out: payment.interest_paid,
+          balance_amount: currentOrgBalance,
+          ad_date: adDate,
+          bs_date: bs_date,
+          fiscal_year: fiscalYear,
+          fiscal_quarter: fiscalQuarter,
+          created_by: createdBy,
+          is_manual: false,
+          description: `Reversal of interest payment for payment ID: ${payment.id}`
+        });
+        await queryRunner.manager.save(interestTx);
+      }
+
+      // 4. Audit Log
+      const log = queryRunner.manager.create(ActivityLog, {
+        user_id: createdBy,
+        action: ActionType.UPDATE,
+        module: 'LOANS',
+        payload: { paymentId: payment.id, loanId: loan.id, action: 'REVERSAL' }
+      });
+      await queryRunner.manager.save(log);
+
+      await queryRunner.commitTransaction();
+      return { message: 'Payment successfully reversed' };
+    } catch (err) {
+      await queryRunner.rollbackTransaction();
+      throw err;
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
   async getLoansByMember(memberId: string) {
     return this.loansRepo.find({ where: { member_id: memberId }, order: { created_at: 'DESC' } });
   }
@@ -267,7 +368,7 @@ export class LoansService {
 
     const payments = await this.paymentsRepo.find({
       where: { loan_account_id: loanId },
-      order: { payment_date: 'DESC', created_at: 'DESC' },
+      order: { created_at: 'DESC', sn: 'DESC' },
       relations: ['creator']
     });
 

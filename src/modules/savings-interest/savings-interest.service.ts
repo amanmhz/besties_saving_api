@@ -143,12 +143,9 @@ export class SavingsInterestService {
       await queryRunner.manager.save(transaction);
 
       if (withdrawType === 'TRANSFER_TO_SAVING_ACCOUNT') {
-        // We need to perform the deposit. 
-        // Note: Using the savingsService within the same transaction if possible, 
-        // but since we are already in a transaction, we should use queryRunner.manager.
-        
-        // Let's call a internal helper or just re-implement deposit logic here to ensure same transaction
-        await this.internalDepositFromInterest(queryRunner.manager, memberId, amount, bsDate, createdBy, remarks);
+        const depositId = await this.internalDepositFromInterest(queryRunner.manager, memberId, amount, bsDate, createdBy, remarks);
+        interest.saving_deposit_id = depositId;
+        await queryRunner.manager.save(interest);
       }
 
       await queryRunner.commitTransaction();
@@ -214,6 +211,7 @@ export class SavingsInterestService {
       is_manual: false
     });
     await manager.save(transaction);
+    return savedDeposit.id;
   }
 
   async withdrawInterestBulk(data: {
@@ -264,7 +262,7 @@ export class SavingsInterestService {
           fiscal_quarter: fiscalQuarter,
           created_by: createdBy
         });
-        await queryRunner.manager.save(interest);
+        const savedInterest = await queryRunner.manager.save(interest);
 
         // Org level transaction (Distribution)
         currentOrgBalance -= amount;
@@ -285,10 +283,10 @@ export class SavingsInterestService {
         await queryRunner.manager.save(transaction);
 
         if (withdrawType === 'TRANSFER_TO_SAVING_ACCOUNT') {
-          // Inside internalDepositFromInterest, we need to pass the currentOrgBalance and get back the updated one
-          // to avoid multiple SUM queries. But for now, let's keep it simple or refactor internalDeposit.
-          // Let's refactor it slightly to accept org balance.
-          currentOrgBalance = await this.internalDepositFromInterestWithBalance(queryRunner.manager, memberId, amount, bsDate, createdBy, remarks, currentOrgBalance);
+          const result = await this.internalDepositFromInterestWithBalance(queryRunner.manager, memberId, amount, bsDate, createdBy, remarks, currentOrgBalance);
+          currentOrgBalance = result.newOrgBalance;
+          savedInterest.saving_deposit_id = result.depositId;
+          await queryRunner.manager.save(savedInterest);
         }
       }
 
@@ -352,7 +350,7 @@ export class SavingsInterestService {
       is_manual: false
     });
     await manager.save(transaction);
-    return newOrgBalance;
+    return { newOrgBalance, depositId: savedDeposit.id };
   }
 
   async getAll(filters: any) {
@@ -362,5 +360,159 @@ export class SavingsInterestService {
     
     // Add filters if needed
     return query.getMany();
+  }
+
+  async reverseInterest(id: string, createdBy: string) {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      const interestLog = await queryRunner.manager.findOne(SavingInterest, { where: { id } });
+      if (!interestLog) throw new NotFoundException('Interest record not found');
+      if (interestLog.is_reversed) throw new BadRequestException('Record is already reversed');
+
+      interestLog.is_reversed = true;
+      await queryRunner.manager.save(interestLog);
+
+      let currentOrgBalance = await this.getOrgCurrentBalance(queryRunner.manager);
+      const adDate = new Date();
+      const bs_date = DateConverter.adToBs(adDate);
+      const fiscalYear = FiscalCalculator.getFiscalYear(bs_date);
+      const fiscalQuarter = FiscalCalculator.getFiscalQuarter(bs_date);
+
+      const lastRecord = await queryRunner.manager.findOne(SavingInterest, {
+        where: {},
+        order: { sn: 'DESC' }
+      });
+      let currentPoolBalance = lastRecord ? Number(lastRecord.balance_amount) : 0;
+
+      if (Number(interestLog.amount_in) > 0) {
+        // Reversing an ADD (bank interest)
+        currentPoolBalance -= Number(interestLog.amount_in);
+        const reversalInterest = queryRunner.manager.create(SavingInterest, {
+          amount_in: 0,
+          amount_out: interestLog.amount_in,
+          balance_amount: currentPoolBalance,
+          withdraw_type: 'REVERSAL',
+          remarks: `Reversal of bank interest add (Ref: ${interestLog.id})`,
+          ad_date: adDate,
+          bs_date: bs_date,
+          fiscal_year: fiscalYear,
+          fiscal_quarter: fiscalQuarter,
+          created_by: createdBy,
+          is_reversed: true // Optional: Mark the reversal row itself as reversed or just let it act as an adjusting entry
+        });
+        await queryRunner.manager.save(reversalInterest);
+
+        currentOrgBalance -= Number(interestLog.amount_in);
+        const transaction = queryRunner.manager.create(Transaction, {
+          type: TransactionType.SAVING_INTEREST_ADD_REVERSAL,
+          amount_in: 0,
+          amount_out: interestLog.amount_in,
+          balance_amount: currentOrgBalance,
+          ad_date: adDate,
+          bs_date: bs_date,
+          fiscal_year: fiscalYear,
+          fiscal_quarter: fiscalQuarter,
+          created_by: createdBy,
+          description: `Reversal of bank interest add (ID: ${interestLog.id})`,
+          is_manual: true
+        });
+        await queryRunner.manager.save(transaction);
+      } else if (Number(interestLog.amount_out) > 0) {
+        // Reversing a DISTRIBUTION
+        currentPoolBalance += Number(interestLog.amount_out);
+        const reversalInterest = queryRunner.manager.create(SavingInterest, {
+          amount_in: interestLog.amount_out,
+          amount_out: 0,
+          balance_amount: currentPoolBalance,
+          remarks: `Reversal of interest distribution (Ref: ${interestLog.id})`,
+          ad_date: adDate,
+          bs_date: bs_date,
+          fiscal_year: fiscalYear,
+          fiscal_quarter: fiscalQuarter,
+          created_by: createdBy,
+          is_reversed: true
+        });
+        await queryRunner.manager.save(reversalInterest);
+
+        currentOrgBalance += Number(interestLog.amount_out);
+        const transaction = queryRunner.manager.create(Transaction, {
+          type: TransactionType.SAVING_INTEREST_DISTRIBUTION_REVERSAL,
+          amount_in: interestLog.amount_out,
+          amount_out: 0,
+          balance_amount: currentOrgBalance,
+          ad_date: adDate,
+          bs_date: bs_date,
+          fiscal_year: fiscalYear,
+          fiscal_quarter: fiscalQuarter,
+          created_by: createdBy,
+          description: `Reversal of interest distribution (ID: ${interestLog.id})`,
+          is_manual: true
+        });
+        await queryRunner.manager.save(transaction);
+
+        // If it was a transfer, we must also reverse the saving deposit
+        if (interestLog.withdraw_type === 'TRANSFER_TO_SAVING_ACCOUNT' && interestLog.saving_deposit_id) {
+          const originalDeposit = await queryRunner.manager.findOne(SavingDeposit, { 
+            where: { id: interestLog.saving_deposit_id }
+          });
+          
+          if (originalDeposit) {
+            const account = await queryRunner.manager.findOne(SavingAccount, { 
+              where: { id: originalDeposit.saving_account_id }
+            });
+            
+            if (account) {
+              account.total_balance = Number(account.total_balance) - Number(interestLog.amount_out);
+              await queryRunner.manager.save(account);
+
+              const reversalDeposit = queryRunner.manager.create(SavingDeposit, {
+                saving_account_id: account.id,
+                amount_in: 0,
+                amount_out: interestLog.amount_out,
+                withdraw_type: 'REVERSAL',
+                remarks: `Reversing accidental interest transfer (Ref: ${interestLog.id})`,
+                balance_after: account.total_balance,
+                bs_date: bs_date,
+                ad_date: adDate,
+                fiscal_year: fiscalYear,
+                fiscal_quarter: fiscalQuarter,
+                created_by: createdBy
+              });
+              const savedReversalDeposit = await queryRunner.manager.save(reversalDeposit);
+
+              currentOrgBalance -= Number(interestLog.amount_out);
+              const tx2 = queryRunner.manager.create(Transaction, {
+                account_id: account.id,
+                saving_account_id: account.id,
+                saving_deposit_id: savedReversalDeposit.id,
+                type: TransactionType.SAVING_WITHDRAW,
+                amount_in: 0,
+                amount_out: interestLog.amount_out,
+                balance_amount: currentOrgBalance,
+                ad_date: adDate,
+                bs_date: bs_date,
+                fiscal_year: fiscalYear,
+                fiscal_quarter: fiscalQuarter,
+                created_by: createdBy,
+                description: `Reversal of interest transfer deposit`,
+                is_manual: false
+              });
+              await queryRunner.manager.save(tx2);
+            }
+          }
+        }
+      }
+
+      await queryRunner.commitTransaction();
+      return { message: 'Interest record reversed successfully' };
+    } catch (err) {
+      await queryRunner.rollbackTransaction();
+      throw err;
+    } finally {
+      await queryRunner.release();
+    }
   }
 }
